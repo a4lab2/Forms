@@ -7,6 +7,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -119,6 +120,136 @@ func verifyString(field string, r *http.Request) bool {
 
 	}
 	return true
+}
+
+const MAX_UPLOAD_SIZE = 1024 * 1024
+
+// file upload
+func upload(w http.ResponseWriter, r *http.Request) {
+	if r.Method == "GET" {
+		crtime := time.Now().Unix()
+		h := md5.New()
+		io.WriteString(h, strconv.FormatInt(crtime, 10))
+		csrfToken := fmt.Sprintf("%x", h.Sum(nil))
+
+		t, _ := template.ParseFiles("login.tmpl")
+		t.Execute(w, csrfToken)
+	} else {
+		r.Body = http.MaxBytesReader(w, r.Body, MAX_UPLOAD_SIZE)
+		if err := r.ParseMultipartForm(MAX_UPLOAD_SIZE); err != nil {
+			http.Error(w, "The uploaded file is too big. Please choose an file that's less than 1MB in size", http.StatusBadRequest)
+			return
+		}
+		file, handler, err := r.FormFile("uploadFile")
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer file.Close()
+		
+		buff := make([]byte, 512)
+		_, err = file.Read(buff)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		//Check cntent type of the bytes in the buffer
+		filetype := http.DetectContentType(buff)
+		if filetype != "image/jpeg" && filetype != "image/png" { {
+			http.Error(w, "The provided file format is not allowed. Please upload a JPEG or PNG image", http.StatusBadRequest)
+			return
+		}
+
+		_, err := file.Seek(0, io.SeekStart)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		fmt.Fprintf(w, "%v", handler.Header)
+		// Create file with permission
+		f, err := os.OpenFile("./test/"+handler.Filename, os.O_WRONLY|os.O_CREATE, 0666)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		defer f.Close()
+		// Copy file from reader to dst
+		io.Copy(f, file)
+
+
+		//Start of multiple file upload handling
+			// 	files := r.MultipartForm.File["file"]
+
+			// for _, fileHeader := range files {
+			// 	// Restrict the size of each uploaded file to 1MB.
+			// 	// To prevent the aggregate size from exceeding
+			// 	// a specified value, use the http.MaxBytesReader() method
+			// 	// before calling ParseMultipartForm()
+			// 	if fileHeader.Size > MAX_UPLOAD_SIZE {
+			// 		http.Error(w, fmt.Sprintf("The uploaded image is too big: %s. Please use an image less than 1MB in size", fileHeader.Filename), http.StatusBadRequest)
+			// 		return
+			// 	}
+
+			// 	// Open the file
+			// 	file, err := fileHeader.Open()
+			// 	if err != nil {
+			// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+			// 		return
+			// 	}
+
+			// 	defer file.Close()
+
+			// 	buff := make([]byte, 512)
+			// 	_, err = file.Read(buff)
+			// 	if err != nil {
+			// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+			// 		return
+			// 	}
+
+			// 	filetype := http.DetectContentType(buff)
+			// 	if filetype != "image/jpeg" && filetype != "image/png" {
+			// 		http.Error(w, "The provided file format is not allowed. Please upload a JPEG or PNG image", http.StatusBadRequest)
+			// 		return
+			// 	}
+
+			// 	_, err = file.Seek(0, io.SeekStart)
+			// 	if err != nil {
+			// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+			// 		return
+			// 	}
+
+			// 	err = os.MkdirAll("./uploads", os.ModePerm)
+			// 	if err != nil {
+			// 		http.Error(w, err.Error(), http.StatusInternalServerError)
+			// 		return
+			// 	}
+
+			// 	f, err := os.Create(fmt.Sprintf("./uploads/%d%s", time.Now().UnixNano(), filepath.Ext(fileHeader.Filename)))
+			// 	if err != nil {
+			// 		http.Error(w, err.Error(), http.StatusBadRequest)
+			// 		return
+			// 	}
+
+			// 	defer f.Close()
+
+			// 	_, err = io.Copy(f, file)
+			// 	if err != nil {
+			// 		http.Error(w, err.Error(), http.StatusBadRequest)
+			// 		return
+			// 	}
+			// }
+
+			// fmt.Fprintf(w, "Upload successful")
+
+
+	// End of multiple file upload handling
+
+
+
+
+
+	}
 }
 
 // func HTMLEscape(w io.Writer, b []byte) escapes b to w.
